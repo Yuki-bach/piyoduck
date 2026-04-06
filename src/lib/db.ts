@@ -6,6 +6,29 @@ import type { PiyoEvent, DailySummary } from "./parser";
 
 let db: duckdb.AsyncDuckDB | null = null;
 
+/** モジュール読み込み時に即座にWASM fetchを開始 */
+export const dbReady: Promise<void> = (async () => {
+  const DUCKDB_BUNDLES = await duckdb.selectBundle({
+    mvp: {
+      mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm", import.meta.url).href,
+      mainWorker: new URL(
+        "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js",
+        import.meta.url,
+      ).href,
+    },
+    eh: {
+      mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-eh.wasm", import.meta.url).href,
+      mainWorker: new URL("@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js", import.meta.url)
+        .href,
+    },
+  });
+
+  const logger = new duckdb.ConsoleLogger();
+  const worker = new Worker(DUCKDB_BUNDLES.mainWorker!);
+  db = new duckdb.AsyncDuckDB(logger, worker);
+  await db.instantiate(DUCKDB_BUNDLES.mainModule);
+})();
+
 function sqlStr(v: string | null | undefined): string {
   return v === null || v === undefined ? "NULL" : `'${v.replaceAll("'", "''")}'`;
 }
@@ -18,29 +41,8 @@ function sqlNum(v: number | null | undefined): string {
  * DuckDB WASM を初期化してコネクションを返す
  */
 export async function initDB(): Promise<duckdb.AsyncDuckDBConnection> {
-  if (!db) {
-    const DUCKDB_BUNDLES = await duckdb.selectBundle({
-      mvp: {
-        mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm", import.meta.url).href,
-        mainWorker: new URL(
-          "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js",
-          import.meta.url,
-        ).href,
-      },
-      eh: {
-        mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-eh.wasm", import.meta.url).href,
-        mainWorker: new URL("@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js", import.meta.url)
-          .href,
-      },
-    });
-
-    const logger = new duckdb.ConsoleLogger();
-    const worker = new Worker(DUCKDB_BUNDLES.mainWorker!);
-    db = new duckdb.AsyncDuckDB(logger, worker);
-    await db.instantiate(DUCKDB_BUNDLES.mainModule);
-  }
-
-  return db.connect();
+  await dbReady;
+  return db!.connect();
 }
 
 /**
