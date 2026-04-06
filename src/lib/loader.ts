@@ -1,5 +1,5 @@
 /**
- * public/data/ からぴよログファイルを読み込む
+ * src/data/ からぴよログファイルを読み込む
  * manifest.json 不要 — .txt を自動検出
  */
 
