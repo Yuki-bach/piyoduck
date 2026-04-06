@@ -92,13 +92,21 @@ h3 {
 /* --- Period Selector --- */
 .period-selector {
   display: flex;
+  flex-wrap: nowrap;
   gap: 4px;
   background: var(--accent-soft);
   border-radius: 10px;
   padding: 3px;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.period-selector::-webkit-scrollbar {
+  display: none;
 }
 
 .period-btn {
+  flex-shrink: 0;
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
