@@ -90,10 +90,7 @@ function toStringRecord(row: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(row)) {
     if (val === undefined || val === null) result[key] = "";
-    else if (typeof val === "string") result[key] = val;
-    else
-      result[key] =
-        typeof val === "object" ? JSON.stringify(val) : String(val as number | boolean | bigint);
+    else result[key] = typeof val === "object" ? String(val.valueOf()) : String(val);
   }
   return result;
 }
