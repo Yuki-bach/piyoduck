@@ -160,6 +160,7 @@ h3 {
 .view-header {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
   flex-wrap: wrap;
