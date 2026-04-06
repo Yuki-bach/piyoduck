@@ -4,13 +4,12 @@ import { initPiyoAnalysis } from "./lib";
 import type { PiyoLogFile } from "./lib";
 import type { AsyncDuckDBConnection } from "@duckdb/duckdb-wasm";
 import { getStats, getDailyData } from "./lib/analysis";
-import type { Period } from "./lib/analysis";
+import type { Period, Stats } from "./lib/analysis";
 import {
   renderSleepChart,
   renderBreastfeedChart,
   renderFormulaChart,
   renderDiaperChart,
-  destroyCharts,
 } from "./lib/charts";
 import type { DailyRow } from "./lib/charts";
 
@@ -67,7 +66,7 @@ function bindPeriodButtons() {
       const period = btn.dataset.period! as Period;
       if (period === selectedPeriod) return;
       selectedPeriod = period;
-      void renderView();
+      void updateView();
     });
   });
 }
@@ -82,33 +81,27 @@ function periodLabel(): string {
   return `${year}年${Number.parseInt(month)}月`;
 }
 
-// --- Render ---
+let viewInitialized = false;
+
+// --- 初回描画：DOM 骨格を構築 ---
 async function renderView() {
-  destroyCharts();
   const area = document.querySelector(".main-area")!;
-
-  // 1) stats を先に取得して描画（LCP / Speed Index 改善）
   const stats = await getStats(conn, selectedPeriod);
-
-  const sleepRange =
-    stats.min_sleep_hours !== stats.max_sleep_hours
-      ? ` (${stats.min_sleep_hours}〜${stats.max_sleep_hours})`
-      : "";
 
   area.innerHTML = `
     <section class="view fade-in">
       <div class="view-header">
-        <h2>${periodLabel()}</h2>
+        <h2 id="period-label">${periodLabel()}</h2>
         ${periodSelector()}
       </div>
 
       <div class="stat-grid">
-        ${statCard("📅", "記録日数", stats.total_days, "日", "")}
-        ${statCard("😴", "睡眠", stats.avg_sleep_hours, `時間/日${sleepRange}`, `計 ${stats.total_sleep_hours}時間`)}
-        ${statCard("🤱", "授乳", stats.avg_bf_total_min, `分/日 (左${stats.avg_bf_left_min} / 右${stats.avg_bf_right_min})`, `計 ${stats.total_bf_hours}時間 (${stats.total_bf_min}分)`)}
-        ${statCard("🍼", "ミルク", stats.avg_formula_ml, "ml/日", `計 ${stats.total_formula_liters}L (${stats.total_formula_ml}ml)`)}
-        ${statCard("💧", "おしっこ", stats.avg_pee, "回/日", `計 ${stats.total_pee}回`)}
-        ${statCard("💩", "うんち", stats.avg_poop, "回/日", `計 ${stats.total_poop}回`)}
+        ${statCard("📅", "記録日数", "days", stats.total_days, "日", "")}
+        ${statCard("😴", "睡眠", "sleep", stats.avg_sleep_hours, `時間/日${sleepRangeText(stats)}`, `計 ${stats.total_sleep_hours}時間`)}
+        ${statCard("🤱", "授乳", "bf", stats.avg_bf_total_min, `分/日 (左${stats.avg_bf_left_min} / 右${stats.avg_bf_right_min})`, `計 ${stats.total_bf_hours}時間 (${stats.total_bf_min}分)`)}
+        ${statCard("🍼", "ミルク", "formula", stats.avg_formula_ml, "ml/日", `計 ${stats.total_formula_liters}L (${stats.total_formula_ml}ml)`)}
+        ${statCard("💧", "おしっこ", "pee", stats.avg_pee, "回/日", `計 ${stats.total_pee}回`)}
+        ${statCard("💩", "うんち", "poop", stats.avg_poop, "回/日", `計 ${stats.total_poop}回`)}
       </div>
 
       <div class="chart-grid">
@@ -132,20 +125,71 @@ async function renderView() {
     </section>`;
 
   bindPeriodButtons();
+  viewInitialized = true;
 
-  // 2) daily データ取得 → チャート描画（await の間にブラウザが stat-cards を描画できる）
   const daily = await getDailyData(conn, selectedPeriod);
-
-  // notes をチャートの後に追加
-  const noteHtml = renderNotesList(daily);
-  if (noteHtml) {
-    document.querySelector(".view")!.insertAdjacentHTML("beforeend", noteHtml);
-  }
+  updateNotes(daily);
 
   renderSleepChart(document.querySelector("#chart-sleep") as HTMLCanvasElement, daily);
   renderBreastfeedChart(document.querySelector("#chart-bf") as HTMLCanvasElement, daily);
   renderFormulaChart(document.querySelector("#chart-formula") as HTMLCanvasElement, daily);
   renderDiaperChart(document.querySelector("#chart-diaper") as HTMLCanvasElement, daily);
+}
+
+// --- 期間切り替え時：DOM を使い回してデータだけ更新 ---
+async function updateView() {
+  if (!viewInitialized) {
+    await renderView();
+    return;
+  }
+
+  // ボタンの active 状態を更新
+  document.querySelectorAll<HTMLButtonElement>(".period-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.period === selectedPeriod);
+  });
+
+  // ヘッダーラベルを更新
+  document.querySelector("#period-label")!.textContent = periodLabel();
+
+  // stats を取得してカード内テキストだけ差し替え
+  const stats = await getStats(conn, selectedPeriod);
+  updateStatCard("days", stats.total_days, "日", "");
+  updateStatCard("sleep", stats.avg_sleep_hours, `時間/日${sleepRangeText(stats)}`, `計 ${stats.total_sleep_hours}時間`);
+  updateStatCard("bf", stats.avg_bf_total_min, `分/日 (左${stats.avg_bf_left_min} / 右${stats.avg_bf_right_min})`, `計 ${stats.total_bf_hours}時間 (${stats.total_bf_min}分)`);
+  updateStatCard("formula", stats.avg_formula_ml, "ml/日", `計 ${stats.total_formula_liters}L (${stats.total_formula_ml}ml)`);
+  updateStatCard("pee", stats.avg_pee, "回/日", `計 ${stats.total_pee}回`);
+  updateStatCard("poop", stats.avg_poop, "回/日", `計 ${stats.total_poop}回`);
+
+  // daily データ取得 → チャートをアニメーション付きで更新
+  const daily = await getDailyData(conn, selectedPeriod);
+  updateNotes(daily);
+
+  renderSleepChart(document.querySelector("#chart-sleep") as HTMLCanvasElement, daily);
+  renderBreastfeedChart(document.querySelector("#chart-bf") as HTMLCanvasElement, daily);
+  renderFormulaChart(document.querySelector("#chart-formula") as HTMLCanvasElement, daily);
+  renderDiaperChart(document.querySelector("#chart-diaper") as HTMLCanvasElement, daily);
+}
+
+function sleepRangeText(stats: Stats): string {
+  return stats.min_sleep_hours !== stats.max_sleep_hours
+    ? ` (${stats.min_sleep_hours}〜${stats.max_sleep_hours})`
+    : "";
+}
+
+function updateStatCard(key: string, value: string, unit: string, sub: string) {
+  const card = document.querySelector(`[data-stat="${key}"]`);
+  if (!card) return;
+  card.querySelector(".stat-value")!.innerHTML = `${value}<span class="stat-unit">${unit}</span>`;
+  const subEl = card.querySelector(".stat-sub");
+  if (subEl) subEl.textContent = sub;
+}
+
+function updateNotes(daily: DailyRow[]) {
+  document.querySelector(".notes-card")?.remove();
+  const noteHtml = renderNotesList(daily);
+  if (noteHtml) {
+    document.querySelector(".view")!.insertAdjacentHTML("beforeend", noteHtml);
+  }
 }
 
 function renderNotesList(daily: DailyRow[]): string {
@@ -167,10 +211,10 @@ function renderNotesList(daily: DailyRow[]): string {
 }
 
 // --- Helpers ---
-function statCard(icon: string, label: string, value: string, unit: string, sub: string): string {
+function statCard(icon: string, label: string, key: string, value: string, unit: string, sub: string): string {
   const subHtml = sub ? `<div class="stat-sub">${sub}</div>` : "";
   return `
-    <div class="stat-card">
+    <div class="stat-card" data-stat="${key}">
       <div class="stat-icon">${icon}</div>
       <div class="stat-body">
         <div class="stat-label">${label}</div>

@@ -29,17 +29,22 @@ Chart.register(
   Filler,
 );
 
-const activeCharts: Chart[] = [];
+const activeCharts = new Map<string, Chart>();
 
 /** 全チャートを破棄する */
 export function destroyCharts() {
-  for (const c of activeCharts) c.destroy();
-  activeCharts.length = 0;
+  for (const c of activeCharts.values()) c.destroy();
+  activeCharts.clear();
 }
 
-function track(chart: Chart): Chart {
-  activeCharts.push(chart);
+function track(id: string, chart: Chart): Chart {
+  activeCharts.set(id, chart);
   return chart;
+}
+
+/** 既存チャートがあればデータだけ差し替えて update()、なければ新規作成 */
+function getChart(id: string): Chart | undefined {
+  return activeCharts.get(id);
 }
 
 const COLORS = {
@@ -112,15 +117,25 @@ export interface DailyRow {
 }
 
 export function renderSleepChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const values = data.map((d) => Number(d.sleep_hours));
+  const existing = getChart("sleep");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = values;
+    existing.update();
+    return existing;
+  }
   return track(
+    "sleep",
     new Chart(canvas, {
       type: "line",
       data: {
-        labels: data.map((d) => formatDateLabel(d.date)),
+        labels,
         datasets: [
           {
             label: "睡眠 (時間)",
-            data: data.map((d) => Number(d.sleep_hours)),
+            data: values,
             borderColor: COLORS.sleep,
             backgroundColor: COLORS.sleepBg,
             fill: true,
@@ -137,15 +152,27 @@ export function renderSleepChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
 }
 
 export function renderBreastfeedChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const left = data.map((d) => Number(d.breastfeed_left_min));
+  const right = data.map((d) => Number(d.breastfeed_right_min));
+  const existing = getChart("bf");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = left;
+    existing.data.datasets[1].data = right;
+    existing.update();
+    return existing;
+  }
   return track(
+    "bf",
     new Chart(canvas, {
       type: "bar",
       data: {
-        labels: data.map((d) => formatDateLabel(d.date)),
+        labels,
         datasets: [
           {
             label: "左 (分)",
-            data: data.map((d) => Number(d.breastfeed_left_min)),
+            data: left,
             backgroundColor: COLORS.bfLeft,
             borderColor: COLORS.bfLeft,
             borderWidth: 1,
@@ -153,7 +180,7 @@ export function renderBreastfeedChart(canvas: HTMLCanvasElement, data: DailyRow[
           },
           {
             label: "右 (分)",
-            data: data.map((d) => Number(d.breastfeed_right_min)),
+            data: right,
             backgroundColor: COLORS.bfRight,
             borderColor: COLORS.bfRight,
             borderWidth: 1,
@@ -167,15 +194,25 @@ export function renderBreastfeedChart(canvas: HTMLCanvasElement, data: DailyRow[
 }
 
 export function renderFormulaChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const values = data.map((d) => Number(d.formula_ml));
+  const existing = getChart("formula");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = values;
+    existing.update();
+    return existing;
+  }
   return track(
+    "formula",
     new Chart(canvas, {
       type: "line",
       data: {
-        labels: data.map((d) => formatDateLabel(d.date)),
+        labels,
         datasets: [
           {
             label: "ミルク (ml)",
-            data: data.map((d) => Number(d.formula_ml)),
+            data: values,
             borderColor: COLORS.formula,
             backgroundColor: COLORS.formulaBg,
             fill: true,
@@ -192,15 +229,27 @@ export function renderFormulaChart(canvas: HTMLCanvasElement, data: DailyRow[]) 
 }
 
 export function renderDiaperChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const pee = data.map((d) => Number(d.pee_count));
+  const poop = data.map((d) => Number(d.poop_count));
+  const existing = getChart("diaper");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = pee;
+    existing.data.datasets[1].data = poop;
+    existing.update();
+    return existing;
+  }
   return track(
+    "diaper",
     new Chart(canvas, {
       type: "bar",
       data: {
-        labels: data.map((d) => formatDateLabel(d.date)),
+        labels,
         datasets: [
           {
             label: "おしっこ",
-            data: data.map((d) => Number(d.pee_count)),
+            data: pee,
             backgroundColor: COLORS.pee,
             borderColor: COLORS.pee,
             borderWidth: 1,
@@ -208,7 +257,7 @@ export function renderDiaperChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
           },
           {
             label: "うんち",
-            data: data.map((d) => Number(d.poop_count)),
+            data: poop,
             backgroundColor: COLORS.poop,
             borderColor: COLORS.poop,
             borderWidth: 1,
