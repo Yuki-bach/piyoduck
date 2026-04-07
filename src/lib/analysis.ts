@@ -8,6 +8,12 @@ import type { DailyRow } from "./charts";
 /** "all" or "YYYY-MM" */
 export type Period = "all" | `${number}-${string}`;
 
+/** UI が期間セレクタを描画するための選択肢 */
+export interface PeriodOption {
+  value: Period;
+  label: string;
+}
+
 export interface Stats {
   total_days: string;
   avg_sleep_hours: string;
@@ -80,6 +86,37 @@ export async function getDailyData(
   )) as DailyRow[];
 }
 
+/** daily_summaries に存在する年月から期間セレクタの選択肢と全期間ラベルを組み立てる */
+export async function getPeriods(
+  conn: AsyncDuckDBConnection,
+): Promise<{ periods: PeriodOption[]; rangeLabel: string }> {
+  const rows = (await query(
+    conn,
+    `SELECT DISTINCT
+       EXTRACT(YEAR FROM date)::INTEGER AS year,
+       EXTRACT(MONTH FROM date)::INTEGER AS month
+     FROM daily_summaries
+     ORDER BY year, month`,
+  )) as { year: number; month: number }[];
+
+  const months = rows.map((r) => ({
+    value: `${r.year}-${String(r.month).padStart(2, "0")}` as Period,
+    label: `${r.month}月`,
+    headerLabel: `${r.year}年${r.month}月`,
+  }));
+
+  const periods: PeriodOption[] = [
+    { value: "all", label: "全期間" },
+    ...months.map(({ value, label }) => ({ value, label })),
+  ];
+
+  const first = months[0]?.headerLabel;
+  const last = months[months.length - 1]?.headerLabel;
+  const rangeLabel = !first ? "" : first === last ? first : `${first}-${last}`;
+
+  return { periods, rangeLabel };
+}
+
 /** カスタムSQLを実行 */
 export async function customQuery(conn: AsyncDuckDBConnection, sql: string) {
   return query(conn, sql);
@@ -90,7 +127,10 @@ function toStringRecord(row: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(row)) {
     if (val === undefined || val === null) result[key] = "";
-    else result[key] = typeof val === "object" ? String(val.valueOf()) : String(val);
+    else if (typeof val === "bigint") result[key] = val.toString();
+    else if (typeof val === "number" || typeof val === "string" || typeof val === "boolean")
+      result[key] = String(val);
+    else result[key] = JSON.stringify(val);
   }
   return result;
 }
