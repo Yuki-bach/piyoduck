@@ -2,7 +2,7 @@
  * DuckDB WASM の初期化とテーブル作成
  */
 import * as duckdb from "@duckdb/duckdb-wasm";
-import type { PiyoEvent, DailySummary } from "./parser";
+import type { LogEvent, DailySummary } from "./parser";
 
 let db: duckdb.AsyncDuckDB | null = null;
 
@@ -87,7 +87,7 @@ export async function createTables(connection: duckdb.AsyncDuckDBConnection): Pr
  */
 export async function insertEvents(
   connection: duckdb.AsyncDuckDBConnection,
-  events: PiyoEvent[],
+  events: LogEvent[],
 ): Promise<void> {
   if (events.length === 0) return;
 
