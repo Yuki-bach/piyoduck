@@ -7,7 +7,7 @@ import {
 import type { AsyncDuckDBConnection, DuckDBBundles } from "@duckdb/duckdb-wasm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTables, insertEvents, insertSummaries, query, closeDB } from "../src/lib/db";
-import type { PiyoEvent, DailySummary } from "../src/lib/parser";
+import type { LogEvent, DailySummary } from "../src/lib/parser";
 
 /* ------------------------------------------------------------------ */
 /*  DuckDB Node セットアップ                                          */
@@ -49,7 +49,7 @@ beforeEach(async () => {
 /*  テストデータ                                                      */
 /* ------------------------------------------------------------------ */
 
-function makeEvent(overrides: Partial<PiyoEvent> = {}): PiyoEvent {
+function makeEvent(overrides: Partial<LogEvent> = {}): LogEvent {
   return {
     date: "2026-03-01",
     time: "08:30",

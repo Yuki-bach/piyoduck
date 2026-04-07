@@ -2,7 +2,7 @@
  * ぴよログのテキストデータをパースするモジュール
  */
 
-export interface PiyoEvent {
+export interface LogEvent {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   eventType: EventType;
@@ -39,27 +39,27 @@ export interface DailySummary {
   note: string | null;
 }
 
-export interface PiyoLogFile {
+export interface LogFile {
   /** ファイル内のヘッダーから取得した年月 (例: "2026年3月") */
   label: string;
   year: number;
   month: number;
-  events: PiyoEvent[];
+  events: LogEvent[];
   summaries: DailySummary[];
 }
 
 /**
  * 複数ファイルのテキストをまとめてパースする
  */
-export function parseMultiplePiyoLogs(texts: string[]): PiyoLogFile[] {
-  return texts.map((t) => parsePiyoLog(t));
+export function parseLogs(texts: string[]): LogFile[] {
+  return texts.map((t) => parseLog(t));
 }
 
 /**
  * ぴよログのテキスト全体をパースしてイベントと日次サマリーを返す
  */
-export function parsePiyoLog(text: string): PiyoLogFile {
-  const events: PiyoEvent[] = [];
+export function parseLog(text: string): LogFile {
+  const events: LogEvent[] = [];
   const summaries: DailySummary[] = [];
 
   // ヘッダーから年月を取得: 【ぴよログ】2026年3月
@@ -118,7 +118,7 @@ export function parsePiyoLog(text: string): PiyoLogFile {
 
 function parseEventContent(
   content: string,
-): Omit<PiyoEvent, "date" | "time" | "babyAgeMonths" | "babyAgeDays"> | null {
+): Omit<LogEvent, "date" | "time" | "babyAgeMonths" | "babyAgeDays"> | null {
   // 寝る
   if (content.startsWith("寝る")) {
     return {
@@ -228,7 +228,7 @@ function parseEventContent(
 
 function parseBreastfeed(
   content: string,
-): Omit<PiyoEvent, "date" | "time" | "babyAgeMonths" | "babyAgeDays"> {
+): Omit<LogEvent, "date" | "time" | "babyAgeMonths" | "babyAgeDays"> {
   // 「母乳 母乳 (60ml)」のような搾乳パターン
   const expressedMatch = content.match(/^母乳\s+母乳\s*\((\d+)ml\)/);
   if (expressedMatch) {

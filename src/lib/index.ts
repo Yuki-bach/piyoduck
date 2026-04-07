@@ -5,7 +5,7 @@ export { customQuery, getStats, getDailyData, getPeriods } from "./analysis";
 export type { Period, Stats, PeriodOption } from "./analysis";
 export { initDB } from "./db";
 
-import { parseMultiplePiyoLogs } from "./parser";
+import { parseLogs } from "./parser";
 import { createTables, insertEvents, insertSummaries } from "./db";
 import { readTexts } from "./loader";
 import type { AsyncDuckDBConnection } from "@duckdb/duckdb-wasm";
@@ -15,7 +15,7 @@ import type { AsyncDuckDBConnection } from "@duckdb/duckdb-wasm";
  */
 export async function loadData(conn: AsyncDuckDBConnection): Promise<void> {
   const texts = await readTexts();
-  const files = parseMultiplePiyoLogs(texts);
+  const files = parseLogs(texts);
 
   await createTables(conn);
   await insertEvents(

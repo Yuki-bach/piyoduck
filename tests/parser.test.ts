@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseMultiplePiyoLogs, parsePiyoLog } from "../src/lib/parser";
-import type { PiyoEvent } from "../src/lib/parser";
+import { parseLogs, parseLog } from "../src/lib/parser";
+import type { LogEvent } from "../src/lib/parser";
 
 /** 最小限の日ブロックを生成するヘルパー */
 function dayBlock(date: string, age: string, lines: string[]): string {
@@ -18,17 +18,17 @@ function singleDayLog(eventLines: string[]): string {
   return wrapLog(2026, 3, [dayBlock("2026/3/1(日)", "月綺 (0か月24日)", eventLines)]);
 }
 
-describe(parsePiyoLog, () => {
+describe(parseLog, () => {
   describe("ヘッダー・メタデータ", () => {
     it("ヘッダーから年月を取得する", () => {
-      const result = parsePiyoLog("【ぴよログ】2026年3月\n");
+      const result = parseLog("【ぴよログ】2026年3月\n");
       expect(result.label).toBe("2026年3月");
       expect(result.year).toBe(2026);
       expect(result.month).toBe(3);
     });
 
     it("ヘッダーなしの場合は不明を返す", () => {
-      const result = parsePiyoLog("");
+      const result = parseLog("");
       expect(result.label).toBe("不明");
       expect(result.year).toBe(0);
       expect(result.month).toBe(0);
@@ -38,13 +38,13 @@ describe(parsePiyoLog, () => {
 
     it("日付をゼロパディングする", () => {
       const text = singleDayLog(["00:50   寝る"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events[0].date).toBe("2026-03-01");
     });
 
     it("月齢を取得する", () => {
       const text = singleDayLog(["00:50   寝る"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events[0].babyAgeMonths).toBe(0);
       expect(result.events[0].babyAgeDays).toBe(24);
     });
@@ -78,23 +78,23 @@ describe(parsePiyoLog, () => {
       },
     ] as const)(
       "$line → $type",
-      ({ line, type, check }: { line: string; type: string; check: Partial<PiyoEvent> }) => {
-        const result = parsePiyoLog(singleDayLog([line]));
+      ({ line, type, check }: { line: string; type: string; check: Partial<LogEvent> }) => {
+        const result = parseLog(singleDayLog([line]));
         expect(result.events).toHaveLength(1);
         expect(result.events[0].eventType).toBe(type);
         for (const [key, value] of Object.entries(check)) {
-          expect(result.events[0][key as keyof PiyoEvent]).toBe(value);
+          expect(result.events[0][key as keyof LogEvent]).toBe(value);
         }
       },
     );
 
     it("認識できないイベントはスキップする", () => {
-      const result = parsePiyoLog(singleDayLog(["10:00   散歩"]));
+      const result = parseLog(singleDayLog(["10:00   散歩"]));
       expect(result.events).toHaveLength(0);
     });
 
     it("時刻をパースする", () => {
-      const result = parsePiyoLog(singleDayLog(["02:40   寝る"]));
+      const result = parseLog(singleDayLog(["02:40   寝る"]));
       expect(result.events[0].time).toBe("02:40");
     });
   });
@@ -128,12 +128,12 @@ describe(parsePiyoLog, () => {
       },
     ])(
       "$name: $line",
-      ({ line, check }: { name: string; line: string; check: Partial<PiyoEvent> }) => {
-        const result = parsePiyoLog(singleDayLog([line]));
+      ({ line, check }: { name: string; line: string; check: Partial<LogEvent> }) => {
+        const result = parseLog(singleDayLog([line]));
         expect(result.events).toHaveLength(1);
         expect(result.events[0].eventType).toBe("breastfeed");
         for (const [key, value] of Object.entries(check)) {
-          expect(result.events[0][key as keyof PiyoEvent]).toBe(value);
+          expect(result.events[0][key as keyof LogEvent]).toBe(value);
         }
       },
     );
@@ -150,7 +150,7 @@ describe(parsePiyoLog, () => {
         "おしっこ合計   7回",
         "うんち合計　   5回",
       ]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.summaries).toHaveLength(1);
       const s = result.summaries[0];
       expect(s.date).toBe("2026-03-01");
@@ -176,13 +176,13 @@ describe(parsePiyoLog, () => {
         "",
         "今日のコーデはギャル",
       ]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.summaries[0].note).toBe("今日のコーデはギャル");
     });
 
     it("サマリーがない日はsummariesに含まれない", () => {
       const text = singleDayLog(["00:50   寝る"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.summaries).toHaveLength(0);
     });
   });
@@ -190,31 +190,31 @@ describe(parsePiyoLog, () => {
   describe("ノート", () => {
     it("寝るイベントのノートを取得する", () => {
       const text = singleDayLog(["01:15   寝る   少し前からうとうとはしてた"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events[0].note).toBe("少し前からうとうとはしてた");
     });
 
     it("ノートなしの場合はnull", () => {
       const text = singleDayLog(["00:50   寝る"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events[0].note).toBeNull();
     });
 
     it("うんちのノートを取得する", () => {
       const text = singleDayLog(["03:20   うんち 少量"]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events[0].note).toBe("少量");
     });
   });
 
   describe("エッジケース", () => {
     it("セパレータのみ", () => {
-      const result = parsePiyoLog("----------\n----------\n");
+      const result = parseLog("----------\n----------\n");
       expect(result.events).toHaveLength(0);
     });
 
     it("ヘッダーのみ", () => {
-      const result = parsePiyoLog("【ぴよログ】2026年3月\n");
+      const result = parseLog("【ぴよログ】2026年3月\n");
       expect(result.events).toHaveLength(0);
       expect(result.label).toBe("2026年3月");
     });
@@ -224,7 +224,7 @@ describe(parsePiyoLog, () => {
         dayBlock("2026/3/1(日)", "月綺 (0か月24日)", ["00:50   寝る"]),
         dayBlock("2026/3/2(月)", "月綺 (0か月25日)", ["01:00   寝る"]),
       ]);
-      const result = parsePiyoLog(text);
+      const result = parseLog(text);
       expect(result.events).toHaveLength(2);
       expect(result.events[0].date).toBe("2026-03-01");
       expect(result.events[1].date).toBe("2026-03-02");
@@ -232,13 +232,13 @@ describe(parsePiyoLog, () => {
   });
 });
 
-describe(parseMultiplePiyoLogs, () => {
+describe(parseLogs, () => {
   it("複数テキストをパースする", () => {
     const text1 = singleDayLog(["00:50   寝る"]);
     const text2 = wrapLog(2026, 2, [
       dayBlock("2026/2/10(月)", "月綺 (0か月5日)", ["10:00   お風呂"]),
     ]);
-    const results = parseMultiplePiyoLogs([text1, text2]);
+    const results = parseLogs([text1, text2]);
     expect(results).toHaveLength(2);
     expect(results[0].month).toBe(3);
     expect(results[1].month).toBe(2);
@@ -249,7 +249,7 @@ describe("実データ統合テスト", () => {
   it("3月データを正しくパースする", () => {
     const filePath = resolve(import.meta.dirname, "../src/data/テキスト-4A25-9D37-A7-0.txt");
     const text = readFileSync(filePath, "utf-8");
-    const result = parsePiyoLog(text);
+    const result = parseLog(text);
 
     expect(result.year).toBe(2026);
     expect(result.month).toBe(3);
