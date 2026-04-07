@@ -11,10 +11,8 @@ export const dbReady: Promise<void> = (async () => {
   const DUCKDB_BUNDLES = await duckdb.selectBundle({
     mvp: {
       mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm", import.meta.url).href,
-      mainWorker: new URL(
-        "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js",
-        import.meta.url,
-      ).href,
+      mainWorker: new URL("@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js", import.meta.url)
+        .href,
     },
     eh: {
       mainModule: new URL("@duckdb/duckdb-wasm/dist/duckdb-eh.wasm", import.meta.url).href,
