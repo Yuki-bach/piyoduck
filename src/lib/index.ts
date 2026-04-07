@@ -3,29 +3,24 @@
  */
 export { customQuery, getStats, getDailyData, getPeriods } from "./analysis";
 export type { Period, Stats, PeriodOption } from "./analysis";
+export { initDB } from "./db";
 
 import { parseMultiplePiyoLogs } from "./parser";
-import { initDB, createTables, insertEvents, insertSummaries } from "./db";
+import { createTables, insertEvents, insertSummaries } from "./db";
 import type { AsyncDuckDBConnection } from "@duckdb/duckdb-wasm";
 
 /**
- * 複数のぴよログテキストを受け取り、パース -> DB初期化 -> テーブル作成 -> INSERT を一括実行する
+ * テキストをパースしてテーブル作成 + INSERT を行う
  * 単一ファイルの場合は文字列を直接渡してもOK
  */
-export async function initPiyoAnalysis(
+export async function loadData(
+  conn: AsyncDuckDBConnection,
   rawTexts: string | string[],
-): Promise<AsyncDuckDBConnection> {
+): Promise<void> {
   const texts = Array.isArray(rawTexts) ? rawTexts : [rawTexts];
+  const files = parseMultiplePiyoLogs(texts);
 
-  // パースと DB 初期化を並列実行
-  const [files, conn] = await Promise.all([
-    Promise.resolve(parseMultiplePiyoLogs(texts)),
-    initDB().then(async (c) => {
-      await createTables(c);
-      return c;
-    }),
-  ]);
-
+  await createTables(conn);
   await insertEvents(
     conn,
     files.flatMap((f) => f.events),
@@ -34,6 +29,4 @@ export async function initPiyoAnalysis(
     conn,
     files.flatMap((f) => f.summaries),
   );
-
-  return conn;
 }

@@ -1,6 +1,6 @@
 import "./style.css"; // eslint-disable-line import/no-unassigned-import
 import { loadAllPiyoTexts } from "./lib/loader";
-import { initPiyoAnalysis } from "./lib";
+import { initDB, loadData } from "./lib";
 import { getStats, getDailyData, getPeriods } from "./lib/analysis";
 import type { Period, Stats } from "./lib/analysis";
 import {
@@ -21,8 +21,8 @@ async function main() {
       <p>データを読み込み中...</p>
     </div>`;
 
-  const texts = await loadAllPiyoTexts();
-  const conn = await initPiyoAnalysis(texts);
+  const [texts, conn] = await Promise.all([loadAllPiyoTexts(), initDB()]);
+  await loadData(conn, texts);
   const { periods, rangeLabel } = await getPeriods(conn);
 
   let selectedPeriod: Period = "all";
