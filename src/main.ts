@@ -10,6 +10,78 @@ import {
 } from "./lib/charts";
 import type { DailyRow } from "./lib/charts";
 
+// --- Stat / Chart 定義（renderView と updateView で共有） ---
+interface StatDef {
+  key: string;
+  icon: string;
+  label: string;
+  format: (s: Stats) => readonly [value: string, unit: string, sub: string];
+}
+
+const statDefs: StatDef[] = [
+  {
+    key: "days",
+    icon: "📅",
+    label: "記録日数",
+    format: (s) => [s.total_days, "日", ""],
+  },
+  {
+    key: "sleep",
+    icon: "😴",
+    label: "睡眠",
+    format: (s) => [
+      s.avg_sleep_hours,
+      `時間/日${sleepRangeText(s)}`,
+      `計 ${s.total_sleep_hours}時間`,
+    ],
+  },
+  {
+    key: "bf",
+    icon: "🤱",
+    label: "授乳",
+    format: (s) => [
+      s.avg_bf_total_min,
+      `分/日 (左${s.avg_bf_left_min} / 右${s.avg_bf_right_min})`,
+      `計 ${s.total_bf_hours}時間 (${s.total_bf_min}分)`,
+    ],
+  },
+  {
+    key: "formula",
+    icon: "🍼",
+    label: "ミルク",
+    format: (s) => [
+      s.avg_formula_ml,
+      "ml/日",
+      `計 ${s.total_formula_liters}L (${s.total_formula_ml}ml)`,
+    ],
+  },
+  {
+    key: "pee",
+    icon: "💧",
+    label: "おしっこ",
+    format: (s) => [s.avg_pee, "回/日", `計 ${s.total_pee}回`],
+  },
+  {
+    key: "poop",
+    icon: "💩",
+    label: "うんち",
+    format: (s) => [s.avg_poop, "回/日", `計 ${s.total_poop}回`],
+  },
+];
+
+interface ChartDef {
+  id: string;
+  title: string;
+  render: (canvas: HTMLCanvasElement, data: DailyRow[]) => void;
+}
+
+const chartDefs: ChartDef[] = [
+  { id: "chart-sleep", title: "睡眠時間の推移", render: renderSleepChart },
+  { id: "chart-bf", title: "授乳時間の推移（左右内訳）", render: renderBreastfeedChart },
+  { id: "chart-formula", title: "ミルク量の推移", render: renderFormulaChart },
+  { id: "chart-diaper", title: "おむつの推移", render: renderDiaperChart },
+];
+
 // --- Boot ---
 async function main() {
   renderShell();
@@ -25,7 +97,6 @@ async function main() {
   const { periods, rangeLabel } = await getPeriods(conn);
 
   let selectedPeriod: Period = "all";
-  let viewInitialized = false;
 
   // --- Build period selector HTML ---
   function periodSelector(): string {
@@ -53,6 +124,12 @@ async function main() {
     return `${year}年${Number.parseInt(month)}月`;
   }
 
+  function drawCharts(daily: DailyRow[]) {
+    for (const c of chartDefs) {
+      c.render(document.querySelector(`#${c.id}`) as HTMLCanvasElement, daily);
+    }
+  }
+
   // --- 初回描画：DOM 骨格を構築 ---
   async function renderView() {
     const area = document.querySelector(".main-area")!;
@@ -66,53 +143,31 @@ async function main() {
         </div>
 
         <div class="stat-grid">
-          ${statCard("📅", "記録日数", "days", stats.total_days, "日", "")}
-          ${statCard("😴", "睡眠", "sleep", stats.avg_sleep_hours, `時間/日${sleepRangeText(stats)}`, `計 ${stats.total_sleep_hours}時間`)}
-          ${statCard("🤱", "授乳", "bf", stats.avg_bf_total_min, `分/日 (左${stats.avg_bf_left_min} / 右${stats.avg_bf_right_min})`, `計 ${stats.total_bf_hours}時間 (${stats.total_bf_min}分)`)}
-          ${statCard("🍼", "ミルク", "formula", stats.avg_formula_ml, "ml/日", `計 ${stats.total_formula_liters}L (${stats.total_formula_ml}ml)`)}
-          ${statCard("💧", "おしっこ", "pee", stats.avg_pee, "回/日", `計 ${stats.total_pee}回`)}
-          ${statCard("💩", "うんち", "poop", stats.avg_poop, "回/日", `計 ${stats.total_poop}回`)}
+          ${statDefs.map((d) => statCard(d.icon, d.label, d.key, ...d.format(stats))).join("")}
         </div>
 
         <div class="chart-grid">
-          <div class="chart-card">
-            <h3>睡眠時間の推移</h3>
-            <div class="chart-wrap"><canvas id="chart-sleep"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3>授乳時間の推移（左右内訳）</h3>
-            <div class="chart-wrap"><canvas id="chart-bf"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3>ミルク量の推移</h3>
-            <div class="chart-wrap"><canvas id="chart-formula"></canvas></div>
-          </div>
-          <div class="chart-card">
-            <h3>おむつの推移</h3>
-            <div class="chart-wrap"><canvas id="chart-diaper"></canvas></div>
-          </div>
+          ${chartDefs
+            .map(
+              (c) => `
+            <div class="chart-card">
+              <h3>${c.title}</h3>
+              <div class="chart-wrap"><canvas id="${c.id}"></canvas></div>
+            </div>`,
+            )
+            .join("")}
         </div>
       </section>`;
 
     bindPeriodButtons();
-    viewInitialized = true;
 
     const daily = await getDailyData(conn, selectedPeriod);
     updateNotes(daily);
-
-    renderSleepChart(document.querySelector("#chart-sleep") as HTMLCanvasElement, daily);
-    renderBreastfeedChart(document.querySelector("#chart-bf") as HTMLCanvasElement, daily);
-    renderFormulaChart(document.querySelector("#chart-formula") as HTMLCanvasElement, daily);
-    renderDiaperChart(document.querySelector("#chart-diaper") as HTMLCanvasElement, daily);
+    drawCharts(daily);
   }
 
   // --- 期間切り替え時：DOM を使い回してデータだけ更新 ---
   async function updateView() {
-    if (!viewInitialized) {
-      await renderView();
-      return;
-    }
-
     // ボタンの active 状態を更新
     document.querySelectorAll<HTMLButtonElement>(".period-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.period === selectedPeriod);
@@ -123,36 +178,14 @@ async function main() {
 
     // stats を取得してカード内テキストだけ差し替え
     const stats = await getStats(conn, selectedPeriod);
-    updateStatCard("days", stats.total_days, "日", "");
-    updateStatCard(
-      "sleep",
-      stats.avg_sleep_hours,
-      `時間/日${sleepRangeText(stats)}`,
-      `計 ${stats.total_sleep_hours}時間`,
-    );
-    updateStatCard(
-      "bf",
-      stats.avg_bf_total_min,
-      `分/日 (左${stats.avg_bf_left_min} / 右${stats.avg_bf_right_min})`,
-      `計 ${stats.total_bf_hours}時間 (${stats.total_bf_min}分)`,
-    );
-    updateStatCard(
-      "formula",
-      stats.avg_formula_ml,
-      "ml/日",
-      `計 ${stats.total_formula_liters}L (${stats.total_formula_ml}ml)`,
-    );
-    updateStatCard("pee", stats.avg_pee, "回/日", `計 ${stats.total_pee}回`);
-    updateStatCard("poop", stats.avg_poop, "回/日", `計 ${stats.total_poop}回`);
+    for (const d of statDefs) {
+      updateStatCard(d.key, ...d.format(stats));
+    }
 
     // daily データ取得 → チャートをアニメーション付きで更新
     const daily = await getDailyData(conn, selectedPeriod);
     updateNotes(daily);
-
-    renderSleepChart(document.querySelector("#chart-sleep") as HTMLCanvasElement, daily);
-    renderBreastfeedChart(document.querySelector("#chart-bf") as HTMLCanvasElement, daily);
-    renderFormulaChart(document.querySelector("#chart-formula") as HTMLCanvasElement, daily);
-    renderDiaperChart(document.querySelector("#chart-diaper") as HTMLCanvasElement, daily);
+    drawCharts(daily);
   }
 
   await renderView();
