@@ -127,7 +127,10 @@ function toStringRecord(row: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(row)) {
     if (val === undefined || val === null) result[key] = "";
-    else result[key] = typeof val === "object" ? String(val.valueOf()) : String(val);
+    else if (typeof val === "bigint") result[key] = val.toString();
+    else if (typeof val === "number" || typeof val === "string" || typeof val === "boolean")
+      result[key] = String(val);
+    else result[key] = JSON.stringify(val);
   }
   return result;
 }
