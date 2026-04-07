@@ -3,10 +3,18 @@
  * manifest.json 不要 — .txt を自動検出
  */
 
-const modules = import.meta.glob("/src/data/*.txt", { query: "?raw", import: "default" });
+const urls = import.meta.glob("/src/data/*.txt", {
+  query: "?url",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 
 export async function readTexts(): Promise<string[]> {
-  const entries = Object.values(modules);
-  const texts = await Promise.all(entries.map((load) => load() as Promise<string>));
-  return texts;
+  return Promise.all(
+    Object.values(urls).map(async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
+      return res.text();
+    }),
+  );
 }
