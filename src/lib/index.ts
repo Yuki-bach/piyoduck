@@ -7,17 +7,14 @@ export { initDB } from "./db";
 
 import { parseMultiplePiyoLogs } from "./parser";
 import { createTables, insertEvents, insertSummaries } from "./db";
+import { readTexts } from "./loader";
 import type { AsyncDuckDBConnection } from "@duckdb/duckdb-wasm";
 
 /**
- * テキストをパースしてテーブル作成 + INSERT を行う
- * 単一ファイルの場合は文字列を直接渡してもOK
+ * src/data/ 配下のぴよログテキストを読み込み、パース -> テーブル作成 -> INSERT を行う
  */
-export async function loadData(
-  conn: AsyncDuckDBConnection,
-  rawTexts: string | string[],
-): Promise<void> {
-  const texts = Array.isArray(rawTexts) ? rawTexts : [rawTexts];
+export async function loadData(conn: AsyncDuckDBConnection): Promise<void> {
+  const texts = await readTexts();
   const files = parseMultiplePiyoLogs(texts);
 
   await createTables(conn);
