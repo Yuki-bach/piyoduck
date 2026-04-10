@@ -117,6 +117,137 @@ export async function getPeriods(
   return { periods, rangeLabel };
 }
 
+/** 授乳間隔（日別平均） */
+export interface FeedingIntervalRow {
+  date: string;
+  avg_interval_hours: number;
+  feed_count: number;
+}
+
+export async function getFeedingIntervals(
+  conn: AsyncDuckDBConnection,
+  period: Period,
+): Promise<FeedingIntervalRow[]> {
+  const where = periodWhere(period);
+  return (await query(
+    conn,
+    `WITH feeds AS (
+       SELECT date,
+         EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time) AS mins,
+         LAG(EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time))
+           OVER (PARTITION BY date ORDER BY time) AS prev_mins
+       FROM events
+       WHERE event_type IN ('breastfeed', 'formula')
+         AND ${where}
+     )
+     SELECT date,
+       ROUND(AVG((mins - prev_mins) / 60.0), 2) AS avg_interval_hours,
+       COUNT(*) + 1 AS feed_count
+     FROM feeds
+     WHERE prev_mins IS NOT NULL
+     GROUP BY date
+     ORDER BY date`,
+  )) as unknown as FeedingIntervalRow[];
+}
+
+/** 日別の最長連続睡眠 */
+export interface LongestSleepRow {
+  date: string;
+  longest_sleep_hours: number | null;
+}
+
+interface SleepEventRow {
+  date: string;
+  hour: number;
+  event_type: string;
+}
+
+interface SleepSession {
+  date: string;
+  duration_hours: number;
+}
+
+export async function getLongestSleepDurations(
+  conn: AsyncDuckDBConnection,
+  period: Period,
+): Promise<LongestSleepRow[]> {
+  const dateRows = (await query(
+    conn,
+    `SELECT strftime(date, '%Y-%m-%d') AS date
+     FROM daily_summaries
+     WHERE ${periodWhere(period)}
+     ORDER BY date`,
+  )) as { date: string }[];
+
+  const rows = (await query(
+    conn,
+    `SELECT strftime(date, '%Y-%m-%d') AS date,
+       ROUND(EXTRACT(HOUR FROM time) + EXTRACT(MINUTE FROM time) / 60.0, 4) AS hour,
+       event_type
+     FROM events
+     WHERE event_type IN ('sleep', 'wake')
+     ORDER BY date, time`,
+  )) as unknown as SleepEventRow[];
+
+  const sessions = pairSleepSessions(rows);
+  const longestByDate = new Map<string, number>();
+
+  for (const session of sessions) {
+    if (!matchesPeriod(session.date, period)) continue;
+    const current = longestByDate.get(session.date) ?? 0;
+    if (session.duration_hours > current) longestByDate.set(session.date, session.duration_hours);
+  }
+
+  return dateRows.map(({ date }) => ({
+    date,
+    longest_sleep_hours: longestByDate.has(date)
+      ? roundHours(longestByDate.get(date) ?? 0)
+      : null,
+  }));
+}
+
+function pairSleepSessions(rows: SleepEventRow[]): SleepSession[] {
+  const sessions: SleepSession[] = [];
+  let sleepStart: { date: string; hour: number } | null = null;
+
+  for (const row of rows) {
+    if (row.event_type === "sleep") {
+      sleepStart = { date: row.date, hour: row.hour };
+    } else if (row.event_type === "wake" && sleepStart) {
+      const durationHours = getDurationHours(sleepStart.date, sleepStart.hour, row.date, row.hour);
+      if (durationHours > 0) sessions.push({ date: sleepStart.date, duration_hours: durationHours });
+      sleepStart = null;
+    }
+  }
+
+  if (sleepStart) {
+    sessions.push({ date: sleepStart.date, duration_hours: 24 - sleepStart.hour });
+  }
+
+  return sessions;
+}
+
+function getDurationHours(
+  startDate: string,
+  startHour: number,
+  endDate: string,
+  endHour: number,
+): number {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  const dayDiff = Math.round((end - start) / dayMs);
+  return dayDiff * 24 + (endHour - startHour);
+}
+
+function matchesPeriod(date: string, period: Period): boolean {
+  return period === "all" || date.startsWith(period);
+}
+
+function roundHours(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /** カスタムSQLを実行 */
 export async function customQuery(conn: AsyncDuckDBConnection, sql: string) {
   return query(conn, sql);

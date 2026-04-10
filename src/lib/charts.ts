@@ -47,6 +47,8 @@ function getChart(id: string): Chart | undefined {
   return activeCharts.get(id);
 }
 
+import type { FeedingIntervalRow, LongestSleepRow } from "./analysis";
+
 const COLORS = {
   sleep: "#6b7fde",
   sleepBg: "rgba(107, 127, 222, 0.15)",
@@ -56,6 +58,8 @@ const COLORS = {
   bfRightBg: "rgba(212, 114, 106, 0.15)",
   formula: "#85c7b3",
   formulaBg: "rgba(133, 199, 179, 0.15)",
+  feedInterval: "#e07b9b",
+  feedIntervalBg: "rgba(224, 123, 155, 0.15)",
   pee: "#f6c957",
   peeBg: "rgba(246, 201, 87, 0.15)",
   poop: "#c49a6c",
@@ -266,6 +270,99 @@ export function renderDiaperChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
         ],
       },
       options: baseOptions("回", true),
+    }),
+  );
+}
+
+export function renderFeedingIntervalChart(canvas: HTMLCanvasElement, data: FeedingIntervalRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const values = data.map((d) => Number(d.avg_interval_hours));
+  const existing = getChart("feed-interval");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = values;
+    existing.update();
+    return existing;
+  }
+  return track(
+    "feed-interval",
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "平均授乳間隔 (時間)",
+            data: values,
+            borderColor: COLORS.feedInterval,
+            backgroundColor: COLORS.feedIntervalBg,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2.5,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: baseOptions("時間"),
+    }),
+  );
+}
+
+function formatDuration(hours: number): string {
+  const totalMinutes = Math.round(hours * 60);
+  const hh = Math.floor(totalMinutes / 60);
+  const mm = totalMinutes % 60;
+  return mm === 0 ? `${hh}時間` : `${hh}時間${mm}分`;
+}
+
+export function renderLongestSleepChart(canvas: HTMLCanvasElement, data: LongestSleepRow[]) {
+  const labels = data.map((d) => formatDateLabel(d.date));
+  const values = data.map((d) => d.longest_sleep_hours);
+  const options = baseOptions("時間");
+  const existing = getChart("longest-sleep");
+  if (existing) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = values;
+    existing.update();
+    return existing;
+  }
+  return track(
+    "longest-sleep",
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "最長連続睡眠 (時間)",
+            data: values,
+            borderColor: COLORS.sleep,
+            backgroundColor: COLORS.sleepBg,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2.5,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+            spanGaps: false,
+          },
+        ],
+      },
+      options: {
+        ...options,
+        plugins: {
+          ...options.plugins,
+          tooltip: {
+            ...options.plugins?.tooltip,
+            callbacks: {
+              label(ctx) {
+                if (ctx.raw == null) return "記録なし";
+                return `最長連続睡眠: ${formatDuration(Number(ctx.raw))}`;
+              },
+            },
+          },
+        },
+      },
     }),
   );
 }

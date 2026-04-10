@@ -1,6 +1,12 @@
 import "./style.css"; // eslint-disable-line import/no-unassigned-import
 import { initDB, loadData } from "./lib";
-import { getStats, getDailyData, getPeriods } from "./lib/analysis";
+import {
+  getStats,
+  getDailyData,
+  getPeriods,
+  getFeedingIntervals,
+  getLongestSleepDurations,
+} from "./lib/analysis";
 import type { Period } from "./lib/analysis";
 import { renderStatCards, updateStatCards } from "./ui/stat-cards";
 import { renderChartPanels, drawCharts } from "./ui/chart-panels";
@@ -64,9 +70,13 @@ async function main() {
 
     bindPeriodButtons();
 
-    const daily = await getDailyData(conn, selectedPeriod);
+    const [daily, feedingIntervals, longestSleep] = await Promise.all([
+      getDailyData(conn, selectedPeriod),
+      getFeedingIntervals(conn, selectedPeriod),
+      getLongestSleepDurations(conn, selectedPeriod),
+    ]);
     updateNotes(daily);
-    drawCharts(daily);
+    drawCharts({ daily, feedingIntervals, longestSleep });
   }
 
   // --- 期間切り替え時：DOM を使い回してデータだけ更新 ---
@@ -79,9 +89,13 @@ async function main() {
     const stats = await getStats(conn, selectedPeriod);
     updateStatCards(stats);
 
-    const daily = await getDailyData(conn, selectedPeriod);
+    const [daily, feedingIntervals, longestSleep] = await Promise.all([
+      getDailyData(conn, selectedPeriod),
+      getFeedingIntervals(conn, selectedPeriod),
+      getLongestSleepDurations(conn, selectedPeriod),
+    ]);
     updateNotes(daily);
-    drawCharts(daily);
+    drawCharts({ daily, feedingIntervals, longestSleep });
   }
 
   await renderView();
