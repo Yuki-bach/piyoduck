@@ -1,8 +1,15 @@
 /**
  * ぴよログ分析ライブラリのエントリポイント
  */
-export { customQuery, getStats, getDailyData, getPeriods } from "./analysis";
-export type { Period, Stats, PeriodOption } from "./analysis";
+export {
+  customQuery,
+  getStats,
+  getDailyData,
+  getPeriods,
+  getFeedingIntervals,
+  getLongestSleepDurations,
+} from "./analysis";
+export type { Period, Stats, PeriodOption, FeedingIntervalRow, LongestSleepRow } from "./analysis";
 export { initDB } from "./db";
 
 import { parseLogs } from "./parser";
