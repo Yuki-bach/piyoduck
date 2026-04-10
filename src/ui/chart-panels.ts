@@ -27,6 +27,11 @@ interface ChartDef {
 const chartDefs: ChartDef[] = [
   { id: "chart-sleep", title: "睡眠時間の推移", render: (c, d) => renderSleepChart(c, d.daily) },
   {
+    id: "chart-longest-sleep",
+    title: "最長連続睡眠の推移",
+    render: (c, d) => renderLongestSleepChart(c, d.longestSleep),
+  },
+  {
     id: "chart-bf",
     title: "授乳時間の推移（左右内訳）",
     render: (c, d) => renderBreastfeedChart(c, d.daily),
@@ -42,11 +47,6 @@ const chartDefs: ChartDef[] = [
     render: (c, d) => renderFeedingIntervalChart(c, d.feedingIntervals),
   },
   { id: "chart-diaper", title: "おむつの推移", render: (c, d) => renderDiaperChart(c, d.daily) },
-  {
-    id: "chart-longest-sleep",
-    title: "最長連続睡眠の推移",
-    render: (c, d) => renderLongestSleepChart(c, d.longestSleep),
-  },
 ];
 
 /** 空の canvas を含むチャートパネル群の HTML を組み立てる */
