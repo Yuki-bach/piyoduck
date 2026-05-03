@@ -200,9 +200,7 @@ export async function getLongestSleepDurations(
 
   return dateRows.map(({ date }) => ({
     date,
-    longest_sleep_hours: longestByDate.has(date)
-      ? roundHours(longestByDate.get(date) ?? 0)
-      : null,
+    longest_sleep_hours: longestByDate.has(date) ? roundHours(longestByDate.get(date) ?? 0) : null,
   }));
 }
 
@@ -215,7 +213,8 @@ function pairSleepSessions(rows: SleepEventRow[]): SleepSession[] {
       sleepStart = { date: row.date, hour: row.hour };
     } else if (row.event_type === "wake" && sleepStart) {
       const durationHours = getDurationHours(sleepStart.date, sleepStart.hour, row.date, row.hour);
-      if (durationHours > 0) sessions.push({ date: sleepStart.date, duration_hours: durationHours });
+      if (durationHours > 0)
+        sessions.push({ date: sleepStart.date, duration_hours: durationHours });
       sleepStart = null;
     }
   }
@@ -253,15 +252,19 @@ export async function customQuery(conn: AsyncDuckDBConnection, sql: string) {
   return query(conn, sql);
 }
 
-/** Record の各値を安全に文字列化 */
+/** Record の各値を安全に文字列化 (DuckDB-WASM の HUGEINT などは toString() で数値文字列を返す) */
 function toStringRecord(row: Record<string, unknown>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(row)) {
-    if (val === undefined || val === null) result[key] = "";
-    else if (typeof val === "bigint") result[key] = val.toString();
-    else if (typeof val === "number" || typeof val === "string" || typeof val === "boolean")
-      result[key] = String(val);
-    else result[key] = JSON.stringify(val);
+    result[key] = stringify(val);
   }
   return result;
+}
+
+function stringify(val: unknown): string {
+  if (val === undefined || val === null) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "number" || typeof val === "boolean" || typeof val === "bigint")
+    return val.toString();
+  return (val as { toString(): string }).toString();
 }
