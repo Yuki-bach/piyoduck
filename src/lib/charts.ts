@@ -14,7 +14,7 @@ import {
   Legend,
   Filler,
 } from "chart.js";
-import type { ChartOptions } from "chart.js";
+import type { ChartDataset, ChartOptions } from "chart.js";
 
 Chart.register(
   LineController,
@@ -86,6 +86,46 @@ function scaleY(title: string, stacked = false) {
   };
 }
 
+const AVG_COLOR = "rgba(80, 75, 90, 0.55)";
+
+function average(values: (number | null | undefined)[]): number {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (nums.length === 0) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function makeAvgDataset(
+  values: (number | null | undefined)[],
+  format: (v: number) => string,
+): ChartDataset<"line", (number | null)[]> {
+  const avg = average(values);
+  return {
+    type: "line",
+    label: `平均 ${format(avg)}`,
+    data: Array.from({ length: values.length }, () => avg),
+    borderColor: AVG_COLOR,
+    backgroundColor: AVG_COLOR,
+    borderDash: [6, 4],
+    borderWidth: 1.5,
+    pointRadius: 0,
+    pointHoverRadius: 0,
+    fill: false,
+    tension: 0,
+    stack: "_avg",
+    spanGaps: true,
+  };
+}
+
+function updateAvgDataset(
+  ds: ChartDataset,
+  values: (number | null | undefined)[],
+  format: (v: number) => string,
+) {
+  const avg = average(values);
+  ds.data = Array.from({ length: values.length }, () => avg);
+  ds.label = `平均 ${format(avg)}`;
+}
+
 function baseOptions(yTitle: string, stacked = false): ChartOptions {
   return {
     responsive: true,
@@ -120,6 +160,11 @@ export interface DailyRow {
   [key: string]: unknown;
 }
 
+const fmtHours = (v: number) => `${v.toFixed(1)} 時間`;
+const fmtMinutes = (v: number) => `${Math.round(v)} 分`;
+const fmtMl = (v: number) => `${Math.round(v)} ml`;
+const fmtCount = (v: number) => `${v.toFixed(1)} 回`;
+
 export function renderSleepChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
   const labels = data.map((d) => formatDateLabel(d.date));
   const values = data.map((d) => Number(d.sleep_hours));
@@ -127,6 +172,7 @@ export function renderSleepChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = values;
+    updateAvgDataset(existing.data.datasets[1], values, fmtHours);
     existing.update();
     return existing;
   }
@@ -148,6 +194,7 @@ export function renderSleepChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
             pointHoverRadius: 5,
             borderWidth: 2,
           },
+          makeAvgDataset(values, fmtHours),
         ],
       },
       options: baseOptions("時間"),
@@ -159,11 +206,13 @@ export function renderBreastfeedChart(canvas: HTMLCanvasElement, data: DailyRow[
   const labels = data.map((d) => formatDateLabel(d.date));
   const left = data.map((d) => Number(d.breastfeed_left_min));
   const right = data.map((d) => Number(d.breastfeed_right_min));
+  const totals = left.map((v, i) => v + right[i]);
   const existing = getChart("bf");
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = left;
     existing.data.datasets[1].data = right;
+    updateAvgDataset(existing.data.datasets[2], totals, fmtMinutes);
     existing.update();
     return existing;
   }
@@ -190,6 +239,7 @@ export function renderBreastfeedChart(canvas: HTMLCanvasElement, data: DailyRow[
             borderWidth: 1,
             borderRadius: 3,
           },
+          makeAvgDataset(totals, fmtMinutes),
         ],
       },
       options: baseOptions("分", true),
@@ -204,6 +254,7 @@ export function renderFormulaChart(canvas: HTMLCanvasElement, data: DailyRow[]) 
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = values;
+    updateAvgDataset(existing.data.datasets[1], values, fmtMl);
     existing.update();
     return existing;
   }
@@ -225,6 +276,7 @@ export function renderFormulaChart(canvas: HTMLCanvasElement, data: DailyRow[]) 
             pointHoverRadius: 5,
             borderWidth: 2,
           },
+          makeAvgDataset(values, fmtMl),
         ],
       },
       options: baseOptions("ml"),
@@ -236,11 +288,13 @@ export function renderDiaperChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
   const labels = data.map((d) => formatDateLabel(d.date));
   const pee = data.map((d) => Number(d.pee_count));
   const poop = data.map((d) => Number(d.poop_count));
+  const totals = pee.map((v, i) => v + poop[i]);
   const existing = getChart("diaper");
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = pee;
     existing.data.datasets[1].data = poop;
+    updateAvgDataset(existing.data.datasets[2], totals, fmtCount);
     existing.update();
     return existing;
   }
@@ -267,6 +321,7 @@ export function renderDiaperChart(canvas: HTMLCanvasElement, data: DailyRow[]) {
             borderWidth: 1,
             borderRadius: 3,
           },
+          makeAvgDataset(totals, fmtCount),
         ],
       },
       options: baseOptions("回", true),
@@ -281,6 +336,7 @@ export function renderFeedingIntervalChart(canvas: HTMLCanvasElement, data: Feed
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = values;
+    updateAvgDataset(existing.data.datasets[1], values, fmtHours);
     existing.update();
     return existing;
   }
@@ -302,6 +358,7 @@ export function renderFeedingIntervalChart(canvas: HTMLCanvasElement, data: Feed
             pointHoverRadius: 5,
             borderWidth: 2,
           },
+          makeAvgDataset(values, fmtHours),
         ],
       },
       options: baseOptions("時間"),
@@ -324,6 +381,7 @@ export function renderLongestSleepChart(canvas: HTMLCanvasElement, data: Longest
   if (existing) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = values;
+    updateAvgDataset(existing.data.datasets[1], values, formatDuration);
     existing.update();
     return existing;
   }
@@ -346,6 +404,7 @@ export function renderLongestSleepChart(canvas: HTMLCanvasElement, data: Longest
             borderWidth: 2,
             spanGaps: false,
           },
+          makeAvgDataset(values, formatDuration),
         ],
       },
       options: {
@@ -356,7 +415,10 @@ export function renderLongestSleepChart(canvas: HTMLCanvasElement, data: Longest
             ...options.plugins?.tooltip,
             callbacks: {
               label(ctx) {
-                if (ctx.raw == null) return "記録なし";
+                if (ctx.datasetIndex === 1) {
+                  return `平均: ${formatDuration(Number(ctx.raw))}`;
+                }
+                if (ctx.raw === null || ctx.raw === undefined) return "記録なし";
                 return `最長連続睡眠: ${formatDuration(Number(ctx.raw))}`;
               },
             },
