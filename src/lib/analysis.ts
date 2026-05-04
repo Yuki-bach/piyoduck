@@ -156,95 +156,131 @@ export interface LongestSleepRow {
   longest_sleep_hours: number | null;
 }
 
-interface SleepEventRow {
-  date: string;
-  hour: number;
-  event_type: string;
-}
-
-interface SleepSession {
-  date: string;
-  duration_hours: number;
-}
+/**
+ * sleep/wake イベント列から「最長連続睡眠 (per-day)」を導出する共通 CTE。
+ * - 連続する sleep が来た場合は前の sleep を破棄 (= 後続の sleep が wake でないなら NULL)
+ * - 末尾の sleep に対応する wake が無い場合は「24時 - 開始時刻」をその日の duration とみなす
+ *   (元の JS 実装と同じ挙動)
+ * 結果: per_day(date DATE, longest_sleep_hours DOUBLE)
+ */
+const LONGEST_SLEEP_CTE = `
+  ordered_sleep_events AS (
+    SELECT
+      date AS event_date,
+      EXTRACT(HOUR FROM time) + EXTRACT(MINUTE FROM time) / 60.0 AS hour,
+      event_type,
+      ROW_NUMBER() OVER (ORDER BY date, time) AS rn
+    FROM events
+    WHERE event_type IN ('sleep', 'wake')
+  ),
+  with_next_event AS (
+    SELECT
+      event_date,
+      hour,
+      event_type,
+      LEAD(event_type) OVER (ORDER BY rn) AS next_type,
+      LEAD(event_date) OVER (ORDER BY rn) AS next_date,
+      LEAD(hour) OVER (ORDER BY rn) AS next_hour
+    FROM ordered_sleep_events
+  ),
+  sleep_sessions AS (
+    SELECT
+      event_date AS date,
+      CASE
+        WHEN next_type = 'wake' THEN
+          DATE_DIFF('day', event_date, next_date) * 24 + (next_hour - hour)
+        WHEN next_type IS NULL THEN
+          24 - hour
+        ELSE NULL
+      END AS duration_hours
+    FROM with_next_event
+    WHERE event_type = 'sleep'
+  ),
+  per_day AS (
+    SELECT date, MAX(duration_hours) AS longest_sleep_hours
+    FROM sleep_sessions
+    WHERE duration_hours > 0
+    GROUP BY date
+  )`;
 
 export async function getLongestSleepDurations(
   conn: AsyncDuckDBConnection,
   period: Period,
 ): Promise<LongestSleepRow[]> {
-  const dateRows = (await query(
+  return (await query(
     conn,
-    `SELECT strftime(date, '%Y-%m-%d') AS date
+    `WITH ${LONGEST_SLEEP_CTE}
+     SELECT
+       strftime(d.date, '%Y-%m-%d') AS date,
+       ROUND(p.longest_sleep_hours, 2) AS longest_sleep_hours
+     FROM (SELECT date FROM daily_summaries WHERE ${periodWhere(period)}) d
+     LEFT JOIN per_day p ON d.date = p.date
+     ORDER BY d.date`,
+  )) as unknown as LongestSleepRow[];
+}
+
+/** 各チャートの平均線に使う集計値 (全て SQL 側で計算) */
+export interface ChartAverages {
+  sleep_hours: number;
+  bf_total_min: number;
+  formula_ml: number;
+  diaper_total_count: number;
+  feed_interval_hours: number;
+  longest_sleep_hours: number;
+}
+
+export async function getChartAverages(
+  conn: AsyncDuckDBConnection,
+  period: Period,
+): Promise<ChartAverages> {
+  const where = periodWhere(period);
+
+  const [dailyAvg] = (await query(
+    conn,
+    `SELECT
+       AVG(sleep_total_minutes) / 60.0 AS sleep_hours,
+       AVG(breastfeed_left_min + breastfeed_right_min) AS bf_total_min,
+       AVG(formula_ml) AS formula_ml,
+       AVG(pee_count + poop_count) AS diaper_total_count
      FROM daily_summaries
-     WHERE ${periodWhere(period)}
-     ORDER BY date`,
-  )) as { date: string }[];
+     WHERE ${where}`,
+  )) as Record<string, number | null>[];
 
-  const rows = (await query(
+  const [feedAvg] = (await query(
     conn,
-    `SELECT strftime(date, '%Y-%m-%d') AS date,
-       ROUND(EXTRACT(HOUR FROM time) + EXTRACT(MINUTE FROM time) / 60.0, 4) AS hour,
-       event_type
-     FROM events
-     WHERE event_type IN ('sleep', 'wake')
-     ORDER BY date, time`,
-  )) as unknown as SleepEventRow[];
+    `WITH feeds AS (
+       SELECT date,
+         EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time) AS mins,
+         LAG(EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time))
+           OVER (PARTITION BY date ORDER BY time) AS prev_mins
+       FROM events
+       WHERE event_type IN ('breastfeed', 'formula') AND ${where}
+     ),
+     per_day AS (
+       SELECT date, AVG((mins - prev_mins) / 60.0) AS day_avg
+       FROM feeds
+       WHERE prev_mins IS NOT NULL
+       GROUP BY date
+     )
+     SELECT AVG(day_avg) AS feed_interval_hours FROM per_day`,
+  )) as Record<string, number | null>[];
 
-  const sessions = pairSleepSessions(rows);
-  const longestByDate = new Map<string, number>();
+  const [longestAvg] = (await query(
+    conn,
+    `WITH ${LONGEST_SLEEP_CTE}
+     SELECT AVG(longest_sleep_hours) AS longest_sleep_hours
+     FROM per_day
+     WHERE date IN (SELECT date FROM daily_summaries WHERE ${where})`,
+  )) as Record<string, number | null>[];
 
-  for (const session of sessions) {
-    if (!matchesPeriod(session.date, period)) continue;
-    const current = longestByDate.get(session.date) ?? 0;
-    if (session.duration_hours > current) longestByDate.set(session.date, session.duration_hours);
-  }
-
-  return dateRows.map(({ date }) => ({
-    date,
-    longest_sleep_hours: longestByDate.has(date) ? roundHours(longestByDate.get(date) ?? 0) : null,
-  }));
-}
-
-function pairSleepSessions(rows: SleepEventRow[]): SleepSession[] {
-  const sessions: SleepSession[] = [];
-  let sleepStart: { date: string; hour: number } | null = null;
-
-  for (const row of rows) {
-    if (row.event_type === "sleep") {
-      sleepStart = { date: row.date, hour: row.hour };
-    } else if (row.event_type === "wake" && sleepStart) {
-      const durationHours = getDurationHours(sleepStart.date, sleepStart.hour, row.date, row.hour);
-      if (durationHours > 0)
-        sessions.push({ date: sleepStart.date, duration_hours: durationHours });
-      sleepStart = null;
-    }
-  }
-
-  if (sleepStart) {
-    sessions.push({ date: sleepStart.date, duration_hours: 24 - sleepStart.hour });
-  }
-
-  return sessions;
-}
-
-function getDurationHours(
-  startDate: string,
-  startHour: number,
-  endDate: string,
-  endHour: number,
-): number {
-  const dayMs = 24 * 60 * 60 * 1000;
-  const start = Date.parse(`${startDate}T00:00:00Z`);
-  const end = Date.parse(`${endDate}T00:00:00Z`);
-  const dayDiff = Math.round((end - start) / dayMs);
-  return dayDiff * 24 + (endHour - startHour);
-}
-
-function matchesPeriod(date: string, period: Period): boolean {
-  return period === "all" || date.startsWith(period);
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
+  return {
+    sleep_hours: Number(dailyAvg?.sleep_hours ?? 0),
+    bf_total_min: Number(dailyAvg?.bf_total_min ?? 0),
+    formula_ml: Number(dailyAvg?.formula_ml ?? 0),
+    diaper_total_count: Number(dailyAvg?.diaper_total_count ?? 0),
+    feed_interval_hours: Number(feedAvg?.feed_interval_hours ?? 0),
+    longest_sleep_hours: Number(longestAvg?.longest_sleep_hours ?? 0),
+  };
 }
 
 /** カスタムSQLを実行 */

@@ -6,6 +6,7 @@ import {
   getPeriods,
   getFeedingIntervals,
   getLongestSleepDurations,
+  getChartAverages,
 } from "./lib/analysis";
 import type { Period } from "./lib/analysis";
 import { renderStatCards, updateStatCards } from "./ui/stat-cards";
@@ -70,13 +71,14 @@ async function main() {
 
     bindPeriodButtons();
 
-    const [daily, feedingIntervals, longestSleep] = await Promise.all([
+    const [daily, feedingIntervals, longestSleep, averages] = await Promise.all([
       getDailyData(conn, selectedPeriod),
       getFeedingIntervals(conn, selectedPeriod),
       getLongestSleepDurations(conn, selectedPeriod),
+      getChartAverages(conn, selectedPeriod),
     ]);
     updateNotes(daily);
-    drawCharts({ daily, feedingIntervals, longestSleep });
+    drawCharts({ daily, feedingIntervals, longestSleep, averages });
   }
 
   // --- 期間切り替え時：DOM を使い回してデータだけ更新 ---
@@ -89,13 +91,14 @@ async function main() {
     const stats = await getStats(conn, selectedPeriod);
     updateStatCards(stats);
 
-    const [daily, feedingIntervals, longestSleep] = await Promise.all([
+    const [daily, feedingIntervals, longestSleep, averages] = await Promise.all([
       getDailyData(conn, selectedPeriod),
       getFeedingIntervals(conn, selectedPeriod),
       getLongestSleepDurations(conn, selectedPeriod),
+      getChartAverages(conn, selectedPeriod),
     ]);
     updateNotes(daily);
-    drawCharts({ daily, feedingIntervals, longestSleep });
+    drawCharts({ daily, feedingIntervals, longestSleep, averages });
   }
 
   await renderView();
