@@ -91,6 +91,7 @@ export default defineConfig({
       "typescript/no-unsafe-type-assertion": "off",
       "unicorn/no-array-sort": "off",
       "jest/valid-title": "off",
+      "vitest/valid-title": "off",
     },
     overrides: [
       {
