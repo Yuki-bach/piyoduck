@@ -7,7 +7,7 @@ const urls = import.meta.glob("/src/data/*.txt", {
   query: "?url",
   import: "default",
   eager: true,
-}) as Record<string, string>;
+});
 
 export async function readTexts(): Promise<string[]> {
   return Promise.all(
