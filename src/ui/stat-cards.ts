@@ -75,15 +75,15 @@ function statCard(
   unit: string,
   sub: string,
 ): string {
-  const subHtml = sub ? `<div class="stat-sub">${sub}</div>` : "";
+  const subHtml = sub ? `<dd class="stat-sub">${sub}</dd>` : "";
   return `
     <div class="stat-card" data-stat="${key}">
-      <div class="stat-icon">${icon}</div>
-      <div class="stat-body">
-        <div class="stat-label">${label}</div>
-        <div class="stat-value">${value}<span class="stat-unit">${unit}</span></div>
-        ${subHtml}
-      </div>
+      <dt class="stat-label">${label}</dt>
+      <dd class="stat-main">
+        <span class="stat-icon" aria-hidden="true">${icon}</span>
+        <span class="stat-value">${value}<span class="stat-unit">${unit}</span></span>
+      </dd>
+      ${subHtml}
     </div>`;
 }
 

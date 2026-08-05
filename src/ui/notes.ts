@@ -19,13 +19,13 @@ function renderNotesList(daily: DailyRow[]): string {
   const items = notes
     .map((d) => {
       const dt = new Date(d.date);
-      return `<li><span class="note-date">${dt.getMonth() + 1}/${dt.getDate()}</span><span class="note-text">${String(d.note)}</span></li>`;
+      return `<li><time class="note-date" datetime="${d.date}">${dt.getMonth() + 1}/${dt.getDate()}</time><span class="note-text">${String(d.note)}</span></li>`;
     })
     .join("");
 
   return `
-    <div class="notes-card">
-      <h3>📝 メモ</h3>
+    <section class="notes-card" aria-labelledby="notes-title">
+      <h3 id="notes-title"><span aria-hidden="true">📝</span> メモ</h3>
       <ul class="notes-list">${items}</ul>
-    </div>`;
+    </section>`;
 }

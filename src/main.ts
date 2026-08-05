@@ -18,8 +18,8 @@ async function main() {
   renderShell();
 
   document.querySelector(".main-area")!.innerHTML = `
-    <div class="loading">
-      <div class="loading-duck">🐤</div>
+    <div class="loading" role="status" aria-live="polite">
+      <div class="loading-duck" aria-hidden="true">🐤</div>
       <p>データを読み込み中...</p>
     </div>`;
 
@@ -32,9 +32,9 @@ async function main() {
   function periodSelector(): string {
     const options = periods.map(
       (p) =>
-        `<button class="period-btn${selectedPeriod === p.value ? " active" : ""}" data-period="${p.value}">${p.label}</button>`,
+        `<button type="button" class="period-btn${selectedPeriod === p.value ? " active" : ""}" data-period="${p.value}" aria-pressed="${selectedPeriod === p.value}">${p.label}</button>`,
     );
-    return `<div class="period-selector">${options.join("")}</div>`;
+    return `<div class="period-selector" role="group" aria-label="表示期間">${options.join("")}</div>`;
   }
 
   function bindPeriodButtons() {
@@ -60,12 +60,12 @@ async function main() {
     const stats = await getStats(conn, selectedPeriod);
 
     area.innerHTML = `
-      <section class="view fade-in">
+      <section class="view fade-in" aria-labelledby="period-label">
         <div class="view-header">
           <h2 id="period-label">${periodLabel()}</h2>
           ${periodSelector()}
         </div>
-        <div class="stat-grid">${renderStatCards(stats)}</div>
+        <dl class="stat-grid">${renderStatCards(stats)}</dl>
         <div class="chart-grid">${renderChartPanels()}</div>
       </section>`;
 
@@ -84,7 +84,9 @@ async function main() {
   // --- 期間切り替え時：DOM を使い回してデータだけ更新 ---
   async function updateView() {
     document.querySelectorAll<HTMLButtonElement>(".period-btn").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.period === selectedPeriod);
+      const isSelected = btn.dataset.period === selectedPeriod;
+      btn.classList.toggle("active", isSelected);
+      btn.setAttribute("aria-pressed", String(isSelected));
     });
     document.querySelector("#period-label")!.textContent = periodLabel();
 
@@ -99,6 +101,7 @@ async function main() {
     ]);
     updateNotes(daily);
     drawCharts({ daily, feedingIntervals, longestSleep, averages });
+    document.querySelector("#view-status")!.textContent = `${periodLabel()}のデータを表示しました`;
   }
 
   await renderView();
@@ -109,10 +112,11 @@ function renderShell() {
   document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <header class="app-header">
       <div class="header-inner">
-        <h1 class="logo"><span class="logo-icon">🐤</span> piyoduck</h1>
+        <h1 class="logo"><span class="logo-icon" aria-hidden="true">🐤</span> piyoduck</h1>
       </div>
     </header>
     <main class="main-area"></main>
+    <p id="view-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
   `;
 }
 
